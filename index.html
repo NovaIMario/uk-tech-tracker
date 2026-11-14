@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Early Careers Tracker</title>
+  <meta name="description" content="UK tech internships, placements, spring weeks, graduate roles and apprenticeships, read twice a day from over a hundred employers' own job boards, with a private application tracker.">
+  <meta name="theme-color" content="#f9f9f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Cpath d='M8 21l6-6 4 4 7-8' fill='none' stroke='%23fff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+  <script>
+    try { var t = localStorage.getItem('theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#results-head">Skip to the roles</a>
+
+  <header class="topbar">
+    <div class="wrap topbar-inner">
+      <a class="brand" href="./" aria-label="Early Careers Tracker home">
+        <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--series-1)"/><path d="M8 21l6-6 4 4 7-8" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Early Careers Tracker</span>
+      </a>
+      <nav class="top-links" aria-label="On this page">
+        <a href="#also">Other sites</a>
+        <a href="#sources">Sources</a>
+      </nav>
+      <button class="icon-btn" id="theme-toggle" type="button" aria-label="Switch theme">
+        <svg class="i-moon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+        <svg class="i-sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main id="main" class="wrap">
+    <section class="intro">
+      <h1>UK tech internships, placements, spring weeks and graduate roles</h1>
+      <p class="lede">Read straight from the job boards of over a hundred employers, from quant firms and AI labs to banks and engineering companies, twice a day. Track your applications as you go: your list stays in this browser.</p>
+      <p class="updated" id="updated"></p>
+    </section>
+
+    <div id="tiles" class="tiles" role="group" aria-label="Role type"></div>
+
+    <div class="layout">
+      <section class="card panel filters" aria-labelledby="filters-title">
+        <div class="panel-head">
+          <h2 id="filters-title" class="panel-title">Filter</h2>
+          <button id="more-filters" class="btn small ghost more-filters" type="button" aria-expanded="false" aria-controls="filter-more">More filters</button>
+        </div>
+        <div class="field">
+          <label for="q">Search</label>
+          <input id="q" type="search" placeholder="Role, employer or place" autocomplete="off" spellcheck="false">
+        </div>
+        <div id="filter-more" class="filter-more">
+          <div class="field-grid">
+            <div class="field">
+              <label for="disc">Field</label>
+              <select id="disc"></select>
+            </div>
+            <div class="field">
+              <label for="company">Employer</label>
+              <select id="company"></select>
+            </div>
+            <div class="field">
+              <label for="loc">Location</label>
+              <select id="loc"></select>
+            </div>
+          </div>
+          <label class="check"><input id="fresh" type="checkbox"> Added in the last 7 days</label>
+          <label class="check"><input id="closed" type="checkbox"> Include recently closed</label>
+          <button id="reset" class="btn small ghost reset" type="button" hidden>Clear filters</button>
+        </div>
+      </section>
+
+      <section class="card panel tracker" aria-labelledby="tracker-title">
+        <h2 id="tracker-title" class="panel-title">My applications</h2>
+        <p class="panel-note">Set a status on any role to track it. Your list is saved in this browser only.</p>
+        <div id="tracker-chips" class="chips"></div>
+        <div class="actions">
+          <button id="export" class="btn small" type="button">Export</button>
+          <button id="import" class="btn small" type="button">Import</button>
+          <input id="import-file" type="file" accept="application/json,.json" hidden>
+        </div>
+      </section>
+
+      <section class="results-col" aria-labelledby="results-head">
+        <div class="results-head">
+          <h2 id="results-head" class="sr-only">Roles</h2>
+          <p id="count" class="count" aria-live="polite"></p>
+          <label class="sort">Sort
+            <select id="sort">
+              <option value="new">Newest first</option>
+              <option value="company">Employer A–Z</option>
+            </select>
+          </label>
+        </div>
+        <div id="results" class="results">
+          <p class="empty">Loading roles…</p>
+        </div>
+        <button id="more" class="btn more" type="button" hidden>Show more</button>
+      </section>
+
+      <div id="hiring" class="hiring"></div>
+    </div>
+
+    <section id="also" class="section">
+      <div class="section-head">
+        <h2>Also worth checking</h2>
+        <p class="lede">These sites list many roles that aren't on employers' own boards, plus insight events, advice and application windows. They aren't merged in here: Gradcracker and Bright Network block automated access, and Trackr's list is its own curated work. Check them alongside this page.</p>
+      </div>
+      <ul class="also-grid">
+        <li><a class="card also" href="https://www.gradcracker.com/" rel="noopener" target="_blank"><strong>Gradcracker</strong><span>STEM internships, placements, degree apprenticeships and graduate jobs.</span></a></li>
+        <li><a class="card also" href="https://www.brightnetwork.co.uk/" rel="noopener" target="_blank"><strong>Bright Network</strong><span>Graduate jobs, internships and insight events across sectors.</span></a></li>
+        <li><a class="card also" href="https://www.the-trackr.com/" rel="noopener" target="_blank"><strong>Trackr</strong><span>Opening and closing dates for finance, tech and law programmes.</span></a></li>
+        <li><a class="card also" href="https://targetjobs.co.uk/" rel="noopener" target="_blank"><strong>TARGETjobs</strong><span>Graduate jobs and internships, with sector guides.</span></a></li>
+        <li><a class="card also" href="https://www.ratemyplacement.co.uk/" rel="noopener" target="_blank"><strong>RateMyPlacement</strong><span>Placements, internships and insight weeks, with student reviews.</span></a></li>
+        <li><a class="card also" href="https://www.prospects.ac.uk/" rel="noopener" target="_blank"><strong>Prospects</strong><span>Graduate jobs, work experience and careers advice.</span></a></li>
+        <li><a class="card also" href="https://www.findapprenticeship.service.gov.uk/" rel="noopener" target="_blank"><strong>Find an apprenticeship</strong><span>The government's list of apprenticeships in England.</span></a></li>
+        <li><a class="card also" href="https://www.faststream.gov.uk/" rel="noopener" target="_blank"><strong>Civil Service Fast Stream</strong><span>The UK government's graduate programme, including digital and data streams.</span></a></li>
+      </ul>
+    </section>
+
+    <section id="sources" class="section">
+      <div class="section-head">
+        <h2>Where the roles come from</h2>
+        <p class="lede" id="sources-summary"></p>
+      </div>
+      <div class="method">
+        <p>Twice a day a script reads each employer's public job board (Greenhouse, Lever, Ashby or Workday). It keeps roles based in the UK whose titles mark them as internships, placements, spring weeks and insight programmes, graduate or entry-level roles, or apprenticeships, and drops anything senior. Roles that come down are marked closed and disappear three weeks later.</p>
+        <p>It sorts by job title and location text alone, so it can miss a role with an unusual title, and now and then include one that isn't really entry level. The employer's own page is always the final word on eligibility and deadlines.</p>
+      </div>
+      <details class="card sources-card">
+        <summary>All employer boards</summary>
+        <div id="sources-table" class="table-scroll"></div>
+      </details>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-inner">
+      <p>Early Careers Tracker is an independent project. It isn't affiliated with any employer, job board or careers site. Every role links to the employer's own page, so check the details and closing date there before applying.</p>
+      <p>Your application statuses are stored in this browser and never sent anywhere. Use Export to keep a copy or move them to another device.</p>
+    </div>
+  </footer>
+
+  <div id="flash" class="flash" role="status" hidden></div>
+</body>
+</html>
