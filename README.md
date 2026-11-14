@@ -7,7 +7,8 @@ UK tech internships, placements, spring weeks, graduate roles and apprenticeship
 ## What it does
 
 - Lists early-career roles based in the UK from over 120 employers: quant firms, AI labs, software companies, UK fintechs, banks, and engineering and defence companies.
-- Filters by role type, field (software, data and AI, quant, hardware and engineering, security, product, or non-tech), employer, location, and roles added in the last week. Filters live in the URL, so a filtered view can be bookmarked or shared.
+- Filters by role type, field (software, data and AI, quant, hardware and engineering, security, product, or non-tech), employer, location, and posting date (on or after any day you pick, or the past week or month). Filters live in the URL, so a filtered view can be bookmarked or shared.
+- House style: the site never prints the word "job". It shows as "j\*b" everywhere on the page (search for either and you'll get the same results).
 - Shows which employers have the most roles open for the current filters, as a chart with a table view.
 - Has an application tracker: mark a role as saved, applied, interviewing, offer, rejected or not interested. Your statuses stay in your browser and are never sent anywhere. Export and import them as JSON to back them up or move them to another device. Roles you track stay in your list after they close.
 

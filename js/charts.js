@@ -2,7 +2,7 @@
 // Thin bars with a 4px rounded data end, solid hairline grid, text in ink colours (never the
 // series colour), a tooltip on every mark (pointer and keyboard), and a table view for every chart.
 
-import { h, fmtInt } from './dom.js';
+import { h, fmtInt, censor } from './dom.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
@@ -15,7 +15,7 @@ function s(name, attrs, parent) {
 }
 function text(parent, x, y, str, cls, anchor = 'start') {
   const t = s('text', { x, y, class: cls, 'text-anchor': anchor }, parent);
-  t.textContent = str;
+  t.textContent = censor(str);
   return t;
 }
 

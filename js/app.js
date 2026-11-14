@@ -1,4 +1,4 @@
-import { h, $, fmtInt, plural, fmtDate, daysSince, timeAgo, store } from './dom.js';
+import { h, $, fmtInt, plural, fmtDate, daysSince, timeAgo, store, censor, todayISO, isoDaysAgo } from './dom.js';
 import { barChart, chartCard, releaseCharts } from './charts.js';
 
 const TYPES = {
@@ -29,7 +29,9 @@ const STATUSES = [
 ];
 const STATUS_LABEL = Object.fromEntries(STATUSES);
 const CITIES = ['London', 'Cambridge', 'Oxford', 'Edinburgh', 'Manchester', 'Bristol', 'Glasgow', 'Belfast', 'Reading', 'Leeds', 'Birmingham'];
-const DEFAULTS = { q: '', type: 'all', disc: 'tech', company: 'all', loc: 'all', status: 'all', fresh: false, closed: false, sort: 'new' };
+// since: only roles posted (or first seen) on or after this date, YYYY-MM-DD.
+const DEFAULTS = { q: '', type: 'all', disc: 'tech', company: 'all', loc: 'all', since: '', status: 'all', closed: false, sort: 'new' };
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const PAGE = 40;
 
 const state = {
@@ -85,7 +87,7 @@ function importTracked(file) {
 
 function flash(msg) {
   const el = $('#flash');
-  el.textContent = msg;
+  el.textContent = censor(msg);
   el.hidden = false;
   clearTimeout(flash.t);
   flash.t = setTimeout(() => { el.hidden = true; }, 3500);
@@ -114,12 +116,14 @@ function matches(job, f, { ignore = '' } = {}) {
     if (f.disc === 'tech' ? job.discipline === 'business' : f.disc !== 'all' && job.discipline !== f.disc) return false;
     if (f.company !== 'all' && job.company !== f.company) return false;
     if (f.loc !== 'all' && cityOf(job) !== f.loc) return false;
-    if (f.fresh && daysSince(addedOn(job)) > 7) return false;
+    // A "30+ days ago" date is only an upper bound, so it never counts as falling on the cut-off day.
+    if (f.since && (addedOn(job) < f.since || (job.approx && addedOn(job) === f.since))) return false;
   }
   if (ignore !== 'type' && f.type !== 'all' && job.type !== f.type) return false;
   if (f.q) {
     const hay = `${job.title} ${job.company} ${job.location} ${TYPES[job.type][0]} ${DISCIPLINES[job.discipline]}`.toLowerCase();
-    if (!f.q.toLowerCase().split(/\s+/).filter(Boolean).every((w) => hay.includes(w))) return false;
+    const words = f.q.toLowerCase().replace(/j\*b/g, 'job').split(/\s+/).filter(Boolean);
+    if (!words.every((w) => hay.includes(w))) return false;
   }
   return true;
 }
@@ -148,6 +152,7 @@ function readHash() {
     if (!p.has(k)) continue;
     f[k] = typeof DEFAULTS[k] === 'boolean' ? p.get(k) === '1' : p.get(k);
   }
+  if (!ISO_DATE.test(f.since)) f.since = '';
   return f;
 }
 function writeHash() {
@@ -185,6 +190,9 @@ function renderTiles() {
     ...Object.entries(TYPES).map(([t, [, many]]) => tile(many, count(t), state.f.type === t, () => setFilter({ type: state.f.type === t ? 'all' : t }))));
 }
 
+// The date a quick-date chip stands for: "Any time" is no date, the others n days back.
+const quickDate = (b) => (b.dataset.days ? isoDaysAgo(Number(b.dataset.days)) : '');
+
 function option(value, label, selected) {
   return h('option', { value, selected: selected === value }, label);
 }
@@ -206,7 +214,11 @@ function renderFilters() {
   $('#company').replaceChildren(option('all', `All employers (${companies.length})`, f.company), ...companies.map((c) => option(c, c, f.company)));
   $('#loc').replaceChildren(option('all', 'Anywhere in the UK', f.loc), ...cities.map((c) => option(c, `${c} (${cityCounts[c]})`, f.loc)));
   $('#sort').value = f.sort;
-  $('#fresh').checked = f.fresh;
+  const since = $('#since');
+  if (document.activeElement !== since) since.value = f.since;
+  since.max = todayISO();
+  since.min = state.data.jobs.reduce((min, j) => (j.firstSeen < min ? j.firstSeen : min), todayISO());
+  for (const b of document.querySelectorAll('.quick-date')) b.setAttribute('aria-pressed', String(f.since === quickDate(b)));
   $('#closed').checked = f.closed;
   $('#reset').hidden = JSON.stringify(f) === JSON.stringify({ ...DEFAULTS, status: f.status });
   updateMoreFilters();
@@ -215,7 +227,7 @@ function renderFilters() {
 // Phones: everything but search sits behind "More filters"; the button says how many are on.
 function updateMoreFilters() {
   const f = state.f;
-  const on = [f.disc !== DEFAULTS.disc, f.company !== 'all', f.loc !== 'all', f.fresh, f.closed].filter(Boolean).length;
+  const on = [f.disc !== DEFAULTS.disc, f.company !== 'all', f.loc !== 'all', f.since, f.closed].filter(Boolean).length;
   const open = $('.filters').classList.contains('open');
   const btn = $('#more-filters');
   btn.setAttribute('aria-expanded', String(open));
@@ -288,11 +300,12 @@ function renderList() {
   list = sorted(list);
   const shown = list.slice(0, state.limit);
   $('#count').replaceChildren(...[
-    own ? `${plural(list.length, 'role')} marked ${STATUS_LABEL[f.status] ? `“${STATUS_LABEL[f.status]}”` : 'by you'}` : list.length ? plural(list.length, 'role') : '',
+    own ? `${plural(list.length, 'role')} marked ${STATUS_LABEL[f.status] ? `“${STATUS_LABEL[f.status]}”` : 'by you'}`
+      : list.length ? `${plural(list.length, 'role')}${f.since ? ` posted since ${fmtDate(f.since, true)}` : ''}` : '',
     own ? h('button', { class: 'linkish', type: 'button', onclick: () => setFilter({ status: 'all' }) }, 'Back to all roles') : null,
   ].filter(Boolean)); // replaceChildren would print a null as the text "null"
   // The field, employer, location and date filters don't apply to your own list, so switch them off.
-  for (const id of ['disc', 'company', 'loc', 'fresh', 'closed']) $(`#${id}`).disabled = own;
+  for (const el of document.querySelectorAll('#disc, #company, #loc, #since, .quick-date, #closed')) el.disabled = own;
   $('#results').replaceChildren(...(shown.length ? shown.map(jobRow) : [h('div', { class: 'empty' },
     h('p', null, own ? 'Nothing here yet. Use the status menu on any role to track it.' : 'No roles match these filters.'),
     !own && JSON.stringify(f) !== JSON.stringify(DEFAULTS) ? h('button', { class: 'btn small', type: 'button', onclick: () => setFilter({ ...DEFAULTS }) }, 'Clear filters') : null)]));
@@ -333,7 +346,7 @@ function renderSources() {
   const board = { greenhouse: 'Greenhouse', lever: 'Lever', ashby: 'Ashby', workday: 'Workday' };
   const failing = rows.filter((s) => !s.ok);
   const open = rows.reduce((n, s) => n + s.open, 0);
-  $('#sources-summary').textContent = `${plural(rows.length, 'employer job board')}, with ${plural(open, 'early-career UK role')} between them. Last changed ${timeAgo(state.data.updated)}.${failing.length ? ` ${plural(failing.length, 'board')} couldn't be read on the last run, so their roles were kept as they were.` : ''}`;
+  $('#sources-summary').textContent = censor(`${plural(rows.length, 'employer job board')}, with ${plural(open, 'early-career UK role')} between them. Last changed ${timeAgo(state.data.updated)}.${failing.length ? ` ${plural(failing.length, 'board')} couldn't be read on the last run, so their roles were kept as they were.` : ''}`);
   $('#sources-table').replaceChildren(h('table', { class: 'data' },
     h('thead', null, h('tr', null,
       h('th', { scope: 'col' }, 'Employer'),
@@ -381,7 +394,9 @@ function initControls() {
   $('#company').addEventListener('change', (e) => setFilter({ company: e.target.value }));
   $('#loc').addEventListener('change', (e) => setFilter({ loc: e.target.value }));
   $('#sort').addEventListener('change', (e) => setFilter({ sort: e.target.value }));
-  $('#fresh').addEventListener('change', (e) => setFilter({ fresh: e.target.checked }));
+  // A full date (or a cleared field) fires "change"; half-typed dates don't.
+  $('#since').addEventListener('change', (e) => setFilter({ since: ISO_DATE.test(e.target.value) ? e.target.value : '' }));
+  for (const b of document.querySelectorAll('.quick-date')) b.addEventListener('click', () => setFilter({ since: quickDate(b) }));
   $('#closed').addEventListener('change', (e) => setFilter({ closed: e.target.checked }));
   $('#reset').addEventListener('click', () => setFilter({ ...DEFAULTS, status: state.f.status }));
   $('#more-filters').addEventListener('click', () => {

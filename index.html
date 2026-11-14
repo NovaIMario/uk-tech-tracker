@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Early Careers Tracker</title>
-  <meta name="description" content="UK tech internships, placements, spring weeks, graduate roles and apprenticeships, read twice a day from over a hundred employers' own job boards, with a private application tracker.">
+  <meta name="description" content="UK tech internships, placements, spring weeks, graduate roles and apprenticeships, read twice a day from over a hundred employers' own j*b boards, with a private application tracker.">
   <meta name="theme-color" content="#f9f9f7" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Cpath d='M8 21l6-6 4 4 7-8' fill='none' stroke='%23fff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
@@ -36,8 +36,8 @@
 
   <main id="main" class="wrap">
     <section class="intro">
-      <h1>UK tech internships, placements, spring weeks and graduate roles</h1>
-      <p class="lede">Read straight from the job boards of over a hundred employers, from quant firms and AI labs to banks and engineering companies, twice a day. Track your applications as you go: your list stays in this browser.</p>
+      <h1>UK tech internships, placements, spring weeks and graduate j*bs</h1>
+      <p class="lede">Read straight from the j*b boards of over a hundred employers, from quant firms and AI labs to banks and engineering companies, twice a day. Track your applications as you go: your list stays in this browser.</p>
       <p class="updated" id="updated"></p>
     </section>
 
@@ -68,7 +68,15 @@
               <select id="loc"></select>
             </div>
           </div>
-          <label class="check"><input id="fresh" type="checkbox"> Added in the last 7 days</label>
+          <div class="field">
+            <label for="since">Posted on or after</label>
+            <input id="since" type="date">
+            <div class="chips quick-dates" role="group" aria-label="Quick dates">
+              <button class="chip-btn quick-date" type="button" data-days="" aria-pressed="true">Any time</button>
+              <button class="chip-btn quick-date" type="button" data-days="7" aria-pressed="false">Past week</button>
+              <button class="chip-btn quick-date" type="button" data-days="30" aria-pressed="false">Past month</button>
+            </div>
+          </div>
           <label class="check"><input id="closed" type="checkbox"> Include recently closed</label>
           <button id="reset" class="btn small ghost reset" type="button" hidden>Clear filters</button>
         </div>
@@ -111,12 +119,12 @@
         <p class="lede">These sites list many roles that aren't on employers' own boards, plus insight events, advice and application windows. They aren't merged in here: Gradcracker and Bright Network block automated access, and Trackr's list is its own curated work. Check them alongside this page.</p>
       </div>
       <ul class="also-grid">
-        <li><a class="card also" href="https://www.gradcracker.com/" rel="noopener" target="_blank"><strong>Gradcracker</strong><span>STEM internships, placements, degree apprenticeships and graduate jobs.</span></a></li>
-        <li><a class="card also" href="https://www.brightnetwork.co.uk/" rel="noopener" target="_blank"><strong>Bright Network</strong><span>Graduate jobs, internships and insight events across sectors.</span></a></li>
+        <li><a class="card also" href="https://www.gradcracker.com/" rel="noopener" target="_blank"><strong>Gradcracker</strong><span>STEM internships, placements, degree apprenticeships and graduate j*bs.</span></a></li>
+        <li><a class="card also" href="https://www.brightnetwork.co.uk/" rel="noopener" target="_blank"><strong>Bright Network</strong><span>Graduate j*bs, internships and insight events across sectors.</span></a></li>
         <li><a class="card also" href="https://www.the-trackr.com/" rel="noopener" target="_blank"><strong>Trackr</strong><span>Opening and closing dates for finance, tech and law programmes.</span></a></li>
-        <li><a class="card also" href="https://targetjobs.co.uk/" rel="noopener" target="_blank"><strong>TARGETjobs</strong><span>Graduate jobs and internships, with sector guides.</span></a></li>
+        <li><a class="card also" href="https://targetjobs.co.uk/" rel="noopener" target="_blank"><strong>TARGETj*bs</strong><span>Graduate j*bs and internships, with sector guides.</span></a></li>
         <li><a class="card also" href="https://www.ratemyplacement.co.uk/" rel="noopener" target="_blank"><strong>RateMyPlacement</strong><span>Placements, internships and insight weeks, with student reviews.</span></a></li>
-        <li><a class="card also" href="https://www.prospects.ac.uk/" rel="noopener" target="_blank"><strong>Prospects</strong><span>Graduate jobs, work experience and careers advice.</span></a></li>
+        <li><a class="card also" href="https://www.prospects.ac.uk/" rel="noopener" target="_blank"><strong>Prospects</strong><span>Graduate j*bs, work experience and careers advice.</span></a></li>
         <li><a class="card also" href="https://www.findapprenticeship.service.gov.uk/" rel="noopener" target="_blank"><strong>Find an apprenticeship</strong><span>The government's list of apprenticeships in England.</span></a></li>
         <li><a class="card also" href="https://www.faststream.gov.uk/" rel="noopener" target="_blank"><strong>Civil Service Fast Stream</strong><span>The UK government's graduate programme, including digital and data streams.</span></a></li>
       </ul>
@@ -128,8 +136,8 @@
         <p class="lede" id="sources-summary"></p>
       </div>
       <div class="method">
-        <p>Twice a day a script reads each employer's public job board (Greenhouse, Lever, Ashby or Workday). It keeps roles based in the UK whose titles mark them as internships, placements, spring weeks and insight programmes, graduate or entry-level roles, or apprenticeships, and drops anything senior. Roles that come down are marked closed and disappear three weeks later.</p>
-        <p>It sorts by job title and location text alone, so it can miss a role with an unusual title, and now and then include one that isn't really entry level. The employer's own page is always the final word on eligibility and deadlines.</p>
+        <p>Twice a day a script reads each employer's public j*b board (Greenhouse, Lever, Ashby or Workday). It keeps roles based in the UK whose titles mark them as internships, placements, spring weeks and insight programmes, graduate or entry-level roles, or apprenticeships, and drops anything senior. Roles that come down are marked closed and disappear three weeks later.</p>
+        <p>It sorts by j*b title and location text alone, so it can miss a role with an unusual title, and now and then include one that isn't really entry level. The employer's own page is always the final word on eligibility and deadlines.</p>
       </div>
       <details class="card sources-card">
         <summary>All employer boards</summary>
@@ -140,7 +148,7 @@
 
   <footer class="footer">
     <div class="wrap footer-inner">
-      <p>Early Careers Tracker is an independent project. It isn't affiliated with any employer, job board or careers site. Every role links to the employer's own page, so check the details and closing date there before applying.</p>
+      <p>Early Careers Tracker is an independent project. It isn't affiliated with any employer, j*b board or careers site. Every role links to the employer's own page, so check the details and closing date there before applying.</p>
       <p>Your application statuses are stored in this browser and never sent anywhere. Use Export to keep a copy or move them to another device.</p>
     </div>
   </footer>

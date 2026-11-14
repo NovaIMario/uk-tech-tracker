@@ -1,5 +1,8 @@
 // DOM and formatting helpers. Text always goes in as text nodes, never as HTML.
 
+/** House style: the word "job" is too rude to print, so it shows as "j*b" (J*b, j*bs, J*BS). */
+export const censor = (s) => String(s).replace(/(j)o(b)/gi, '$1*$2');
+
 export function h(tag, attrs, ...children) {
   const el = document.createElement(tag);
   if (attrs) {
@@ -12,7 +15,7 @@ export function h(tag, attrs, ...children) {
   }
   for (const c of children.flat(Infinity)) {
     if (c == null || c === false) continue;
-    el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+    el.append(c instanceof Node ? c : document.createTextNode(censor(c)));
   }
   return el;
 }
@@ -27,6 +30,12 @@ export const fmtDate = (s, withYear = false) => asDate(s).toLocaleDateString('en
 });
 export const todayISO = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(new Date());
 export const daysSince = (s) => Math.round((asDate(todayISO()) - asDate(s)) / 864e5);
+/** The UK date n days ago, YYYY-MM-DD. */
+export function isoDaysAgo(n) {
+  const d = asDate(todayISO());
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
 
 export function timeAgo(iso) {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);

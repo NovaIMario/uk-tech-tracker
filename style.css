@@ -268,7 +268,7 @@ button, select, input { font: inherit; color: inherit; }
 .field label { font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
 .field-grid { display: grid; gap: 12px; }
 @media (min-width: 560px) and (max-width: 979px) { .field-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-input[type="search"], select {
+input[type="search"], input[type="date"], select {
   width: 100%;
   min-width: 0;
   padding: 8px 11px;
@@ -278,6 +278,8 @@ input[type="search"], select {
   font-size: 14px;
 }
 input[type="search"]::placeholder { color: var(--muted); }
+input[type="date"] { min-height: 38px; }
+.quick-dates { margin-top: 3px; }
 label.check { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--ink); cursor: pointer; }
 label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--series-1); }
 .reset { justify-self: start; margin-top: -2px; }
@@ -305,7 +307,7 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--se
 .count { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink-2); }
 .linkish { margin-left: 10px; padding: 0; border: 0; background: none; color: var(--link); font-size: 13.5px; font-weight: 600; cursor: pointer; }
 .linkish:hover { text-decoration: underline; }
-select:disabled { opacity: 0.5; cursor: not-allowed; }
+select:disabled, input:disabled, .chip-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 label.check:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
 label.check input:disabled { cursor: not-allowed; }
 .sort { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); white-space: nowrap; }
