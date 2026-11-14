@@ -343,7 +343,7 @@ function renderHiring(list) {
 
 function renderSources() {
   const rows = [...state.data.sources].sort((a, b) => b.open - a.open || b.uk - a.uk || a.company.localeCompare(b.company));
-  const board = { greenhouse: 'Greenhouse', lever: 'Lever', ashby: 'Ashby', workday: 'Workday' };
+  const board = { greenhouse: 'Greenhouse', lever: 'Lever', ashby: 'Ashby', workday: 'Workday', amazon: 'Careers site', eightfold: 'Careers site', sitemap: 'Careers site' };
   const failing = rows.filter((s) => !s.ok);
   const open = rows.reduce((n, s) => n + s.open, 0);
   $('#sources-summary').textContent = censor(`${plural(rows.length, 'employer job board')}, with ${plural(open, 'early-career UK role')} between them. Last changed ${timeAgo(state.data.updated)}.${failing.length ? ` ${plural(failing.length, 'board')} couldn't be read on the last run, so their roles were kept as they were.` : ''}`);
@@ -357,7 +357,8 @@ function renderSources() {
       h('td', null, s.company, s.ok ? null : h('span', { class: 'warn' }, ' · not read last time')),
       h('td', null, board[s.ats] || s.ats),
       h('td', { class: 'num' }, fmtInt(s.open)),
-      h('td', { class: 'num' }, fmtInt(s.uk ?? 0)))))));
+      // Employers read through a search for early-career roles have no count of all their UK roles.
+      s.uk == null ? h('td', { class: 'num', title: 'Read through a search for early-career roles, so there is no count of all UK roles' }, '—') : h('td', { class: 'num' }, fmtInt(s.uk)))))));
 }
 
 function render() {

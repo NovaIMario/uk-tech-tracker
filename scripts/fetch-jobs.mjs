@@ -5,7 +5,8 @@
  *   node scripts/fetch-jobs.mjs
  *
  * Reads every employer board listed in sources.mjs through the public job-board APIs the
- * employers publish (Greenhouse, Lever, Ashby and Workday), keeps UK-based internships,
+ * employers publish (Greenhouse, Lever, Ashby and Workday), or for a few large employers their
+ * own careers site's search or sitemap (Amazon, Microsoft, Arm), keeps UK-based internships,
  * placements, spring weeks, graduate roles and apprenticeships, and merges them into
  * data/jobs.json:
  *   - each role keeps the date it was first posted (or first seen, when the board gives no date)
@@ -28,27 +29,32 @@ const today = daysAgo(0);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const warn = (msg) => console.warn(IN_CI ? `::warning::${msg}` : `warning: ${msg}`);
 
-// Per-host pacing. Lever's robots.txt asks for one request a second.
+// Per-host pacing. Lever's robots.txt asks for one request a second; Microsoft's search turns away
+// all but a couple of requests a minute.
 const lastHit = new Map();
-const GAP = { 'api.lever.co': 1100 };
-async function request(url, init = {}) {
+const GAP = { 'api.lever.co': 1100, 'www.amazon.jobs': 1000, 'apply.careers.microsoft.com': 45_000 };
+/** JSON by default; { text: true } for an HTML page or a sitemap. */
+async function request(url, { text = false, ...init } = {}) {
   const host = new URL(url).host;
   for (let attempt = 1; ; attempt++) {
     const wait = (lastHit.get(host) ?? 0) + (GAP[host] ?? 400) - Date.now();
     if (wait > 0) await sleep(wait);
     lastHit.set(host, Date.now());
+    let pause = 2000 * attempt;
     try {
       const res = await fetch(url, {
         ...init,
-        headers: { 'User-Agent': UA, Accept: 'application/json', ...(init.headers || {}) },
+        headers: { 'User-Agent': UA, Accept: text ? 'text/html, application/xml, text/xml' : 'application/json', ...(init.headers || {}) },
         signal: AbortSignal.timeout(30_000),
       });
-      if (res.ok) return await res.json();
-      if (res.status < 500 || attempt >= 3) throw new Error(`HTTP ${res.status}`);
+      if (res.ok) return await (text ? res.text() : res.json());
+      // Too many requests: wait as long as the server asks (at most a minute), then try again.
+      if (res.status === 429 && attempt < 3) pause = Math.min(60, Number(res.headers.get('retry-after')) || 15 * attempt) * 1000;
+      else if (res.status < 500 || attempt >= 3) throw new Error(`HTTP ${res.status}`);
     } catch (err) {
       if (attempt >= 3 || /HTTP 4/.test(err.message)) throw err;
     }
-    await sleep(2000 * attempt);
+    await sleep(pause);
   }
 }
 
@@ -95,11 +101,15 @@ const TYPES = [
   ['placement', /\b(placement|placements|industrial (trainee|placement|year)|year in industry|sandwich (year|placement|student)|12[- ]month (intern|internship)|year[- ]long internship|industrial internship)\b/i],
   ['apprenticeship', /\b(apprentice|apprentices|apprenticeship|apprenticeships)\b/i],
   ['internship', /\b(intern|interns|internship|internships|summer analyst|summer associate|summer engineer|summer student|summer (20\d\d|program|programme)|off[- ]cycle|co-?op|vacation scheme|undergraduate|undergrad)\b/i],
-  ['graduate', /\b(graduate|graduates|grad|new grad|early careers?|early talent|entry[- ]level|campus|university (hire|graduate)|junior|associate programme|analyst programme|analyst program|full[- ]time analyst|associate product manager|rotational|trainee|20(2[6-9]|3\d) start)\b/i],
+  ['graduate', /\b(graduate|graduates|grads?|new grads?|early careers?|early talent|entry[- ]level|campus|university (hire|graduate)|junior|associate programme|analyst programme|analyst program|full[- ]time analyst|associate product manager|rotational|trainee|20(2[6-9]|3\d) start)\b/i],
 ];
-// Past entry level, running an early-careers programme rather than joining one, or only open to
-// returning interns ("2026 Summer Intern Converts Only").
-const EXCLUDE = /\b(senior|sr\.?|staff|principal|director|executive director|head of|vp|avp|vice president|assistant vice president|chief \w+ officer|chief of staff|experienced|mid[- ]level|\d+\+ years|(recruiting|recruitment|program|programme|campus|early careers?|university|emerging talent|internships?|graduate|apprenticeships?|events?|partnerships?|relations|outreach) (manager|coordinator|lead|specialist|partner|director|advisor|officer|consultant)|interns? (converts? )?only|converts? only|returning interns?)\b/i;
+// Past entry level, or only open to returning interns ("2026 Summer Intern Converts Only").
+const EXCLUDE = /\b(senior|sr\.?|staff|principal|director|executive director|head of|vp|avp|vice president|assistant vice president|chief \w+ officer|chief of staff|experienced|mid[- ]level|\d+\+ years|interns? (converts? )?only|converts? only|returning interns?)\b/i;
+// Running an early-careers programme rather than joining one ("Campus Program Manager", "Apprentice
+// Academy Centre Manager"), unless the role is itself the internship ("Program Manager Intern").
+const PROGRAMME_WORDS = '(academy|programmes?|programs?|schemes?|teams?|centres?|centers?|hub)';
+const RUNS_PROGRAMME = new RegExp(`\\b((recruiting|recruitment|program|programme|campus|early careers?|university|emerging talent|internships?|graduate|apprenticeships?|events?|partnerships?|relations|outreach)( ${PROGRAMME_WORDS})*|(apprentice|intern|graduate)( ${PROGRAMME_WORDS})+) (manager|coordinator|lead|specialist|partner|director|advisor|officer|consultant)\\b`, 'i');
+const STUDENT_ROLE = /\b(manager|coordinator|lead|specialist|partner|advisor|officer|consultant) (intern|interns|internship|apprentice|apprenticeship|placement|trainee)\b/i;
 // Recruiting jobs, unless the title makes clear a student does it ("Talent Acquisition Placement").
 const RECRUITING = /\b(recruiter|recruiters|sourcer|talent (acquisition|partner|advisor|sourcer|specialist|coordinator|manager|lead))\b/i;
 const STUDENT = /\b(placement|intern|interns|internship|apprentice|apprenticeship|industrial|year in industry|summer analyst|work experience)\b/i;
@@ -107,12 +117,42 @@ const STUDENT = /\b(placement|intern|interns|internship|apprentice|apprenticeshi
 const SOFT_EXCLUDE = /\b(manager|lead)\b/i;
 const STRONG_EARLY = /\b(graduate|grad|intern|internship|placement|apprentice|apprenticeship|trainee|junior|entry[- ]level|associate product manager|rotational)\b/i;
 
-export function jobType(title) {
+const typeOf = (text) => TYPES.find(([, re]) => re.test(text))?.[0] ?? null;
+
+/**
+ * The kind of early-careers role, or null. The title decides first. When it doesn't say, the board's own
+ * labels can: Jane Street lists "Software Engineer" with Employment Type "Summer Internship" or
+ * "Full-Time: New Grad", and DRW tags its graduate roles "Campus". Senior and recruiting titles stay out.
+ */
+export function jobType(title, labels = []) {
   if (EXCLUDE.test(title)) return null;
+  if (RUNS_PROGRAMME.test(title) && !STUDENT_ROLE.test(title)) return null;
   if (RECRUITING.test(title) && !STUDENT.test(title)) return null;
-  if (SOFT_EXCLUDE.test(title) && !STRONG_EARLY.test(title)) return null;
-  for (const [type, re] of TYPES) if (re.test(title)) return type;
+  const soft = SOFT_EXCLUDE.test(title) && !STRONG_EARLY.test(title);
+  const fromTitle = soft ? null : typeOf(title);
+  if (fromTitle) return fromTitle;
+  for (const label of labels) {
+    const type = typeOf(label);
+    if (type) return type;
+  }
   return null;
+}
+
+// Which board labels count: fields about the kind of role ("Employment Type", "Job Type", "Experience
+// Level", "Website Job Category Filter", Lever's commitment, Ashby's employment type), and only short
+// values, so free text such as a description ("...Spring Boot...") can't match by accident.
+const LEVEL_FIELD = /\b(employment|job|position|worker|hire|contract|candidate|role)[ _-]?(sub)?type\b|\b(experience|level|seniority|category|commitment)\b/i;
+const shortValues = (values) => values.flat().filter((v) => typeof v === 'string' && v.trim() && v.length <= 60).map((v) => v.trim());
+
+// Where a role is, when the board's own location says only "Hybrid" or "In-Office": some employers keep
+// the offices in a custom field (Cloudflare's "Job Posting Location", Qube's "Locations").
+const PLACE_FIELD = /\b(locations?|offices?|cit(y|ies)|countr(y|ies))\b/i;
+const NOT_PLACE_FIELD = /\b(type|days?)\b/i; // "Location Type: Hybrid", "No. of days in office"
+const isVague = (place) => !place.replace(/\b(hybrid|remote|in[- ]office|on[- ]?site|distributed|flexible|multiple locations?|various locations?|anywhere)\b|[\s;,/|&()-]+/gi, '');
+/** Places for display: up to four in full, otherwise the first UK one and a count. */
+function placeList(places) {
+  if (places.length <= 4) return places.join('; ');
+  return `${places.find((p) => isUK(p)) ?? places[0]} + ${places.length - 1} other locations`;
 }
 
 // First match wins, so the specific fields come before the catch-all words.
@@ -152,18 +192,61 @@ const dateOnly = (v) => {
   const d = new Date(typeof v === 'number' ? v : String(v));
   return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 };
+const parseJSON = (s) => {
+  try { return typeof s === 'string' ? JSON.parse(s) : s; } catch { return null; }
+};
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ndash: '–', mdash: '—' };
+const decodeEntities = (s) => String(s).replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => {
+  if (e[0] !== '#') return ENTITIES[e.toLowerCase()] ?? m;
+  return String.fromCodePoint(e[1].toLowerCase() === 'x' ? parseInt(e.slice(2), 16) : Number(e.slice(1)));
+});
 
-// Each adapter returns [{ id, title, location, url, posted?, old?, country?, ukConfirmed? }].
+// A title or place from a web address: "graduate-engineer-systems-engineering" -> "Graduate Engineer Systems Engineering".
+const SMALL_WORDS = new Set(['a', 'an', 'and', 'at', 'for', 'in', 'of', 'on', 'or', 'the', 'to', 'with']);
+const SPELLINGS = Object.fromEntries(['AI', 'ML', 'UK', 'EMEA', 'IT', 'HR', 'UX', 'UI', 'CPU', 'GPU', 'NPU', 'SoC', 'FPGA', 'ASIC', 'RTL', 'SRE', 'QA', 'PhD', 'MSc', 'BSc', 'MS', 'CAD', 'EDA', 'API', 'SDK', 'IP', 'PCB', 'RF', 'VLSI', 'DevOps', 'iOS'].map((w) => [w.toLowerCase(), w]));
+export function slugTitle(slug) {
+  let text = String(slug);
+  try { text = decodeURIComponent(text); } catch { /* leave it */ }
+  return text.split(/[-_+\s]+/).filter(Boolean).map((w, i) => {
+    const lower = w.toLowerCase();
+    if (SPELLINGS[lower]) return SPELLINGS[lower];
+    if (i > 0 && SMALL_WORDS.has(lower)) return lower;
+    return lower.charAt(0).toUpperCase() + lower.slice(1);
+  }).join(' ');
+}
+
+/** The exact title and posting date from a role's own page: its main heading and its JobPosting data. */
+async function rolePage(url) {
+  const html = await request(url, { text: true });
+  const h1 = html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1];
+  const title = h1 ? clean(decodeEntities(h1.replace(/<[^>]+>/g, ' '))) : '';
+  const posted = dateOnly(html.match(/"datePosted"\s*:\s*"([^"]+)"/)?.[1]);
+  return { ...(title ? { title } : {}), ...(posted ? { posted } : {}) };
+}
+
+// Each adapter returns [{ id, title, location, url, labels?, places?, posted?, old?, country?, ukConfirmed? }].
+// It's given the roles already on file (known), so it can skip reading what it has read before.
+// A list marked searched() holds only what a search for early-career roles found, not every UK role.
+const searched = (jobs) => Object.assign(jobs, { searched: true });
 const adapters = {
   async greenhouse(src) {
     const j = await request(`https://boards-api.greenhouse.io/v1/boards/${src.board}/jobs`);
-    return (j.jobs || []).map((x) => ({
-      id: `gh:${src.board}:${x.id}`,
-      title: clean(x.title),
-      location: clean(x.location?.name),
-      url: x.absolute_url,
-      posted: dateOnly(x.first_published || x.updated_at),
-    }));
+    return (j.jobs || []).map((x) => {
+      const meta = x.metadata || [];
+      const fields = (keep) => shortValues(meta.filter((m) => keep(m.name || '')).map((m) => m.value));
+      const location = clean(x.location?.name);
+      const places = [...new Set(fields((name) => PLACE_FIELD.test(name) && !NOT_PLACE_FIELD.test(name)))];
+      return {
+        id: `gh:${src.board}:${x.id}`,
+        title: clean(x.title),
+        location: isVague(location) && places.length ? placeList(places) : location,
+        places,
+        url: x.absolute_url,
+        // The employer's custom fields, e.g. { name: 'Employment Type', value: 'Summer Internship' }.
+        labels: fields((name) => LEVEL_FIELD.test(name)),
+        posted: dateOnly(x.first_published || x.updated_at),
+      };
+    });
   },
   async lever(src) {
     const j = await request(`https://api.lever.co/v0/postings/${src.board}?mode=json`);
@@ -175,6 +258,7 @@ const adapters = {
         location: clean([...new Set(locs)].join('; ')),
         country: x.country,
         url: x.hostedUrl,
+        labels: shortValues([x.categories?.commitment]),
         posted: dateOnly(x.createdAt),
       };
     });
@@ -189,47 +273,123 @@ const adapters = {
         location: clean([...new Set(locs)].join('; ')),
         country: x.address?.postalAddress?.addressCountry,
         url: x.jobUrl,
+        labels: shortValues([x.employmentType]),
         posted: dateOnly(x.publishedAt),
       };
     });
   },
   async workday(src) {
     // The same endpoint the career site calls. Find the site's UK location filter, then page through
-    // UK roles only.
+    // UK roles only. An employer can run more than one site (G-Research lists placements on its own).
     const host = `${src.tenant}.wd${src.wd}.myworkdayjobs.com`;
-    const api = `https://${host}/wday/cxs/${src.tenant}/${src.site}/jobs`;
-    const post = (body) => request(api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    let appliedFacets = {};
-    let expected = Infinity;
-    if (!src.ukOnly) {
-      const first = await post({ appliedFacets: {}, limit: 1, offset: 0, searchText: '' });
-      const uk = ukFilter(first.facets || []);
-      if (!uk) throw new Error('no UK location filter on this site');
-      ({ appliedFacets, expected } = uk);
-    }
     const jobs = [];
-    let total = 0;
-    for (let offset = 0; offset < 1000; offset += 20) {
-      const page = await post({ appliedFacets, limit: 20, offset, searchText: '' });
-      if (offset === 0) {
-        total = page.total ?? 0; // later pages report 0
-        // If the site ignored the filter we'd be about to label every role worldwide as UK.
-        if (total > expected * 1.5 + 20) throw new Error(`UK filter ignored (${total} results, expected about ${expected})`);
+    for (const site of [src.site].flat()) {
+      const api = `https://${host}/wday/cxs/${src.tenant}/${site}/jobs`;
+      const post = (body) => request(api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      let appliedFacets = {};
+      let expected = Infinity;
+      if (!src.ukOnly) {
+        const first = await post({ appliedFacets: {}, limit: 1, offset: 0, searchText: '' });
+        if (first.total === 0 && !first.jobPostings?.length) continue; // nothing open on this site, so no filters either
+        const uk = ukFilter(first.facets || []);
+        if (!uk) throw new Error(`no UK location filter on the ${site} site`);
+        ({ appliedFacets, expected } = uk);
       }
-      const list = page.jobPostings || [];
-      for (const x of list) {
-        if (!x.externalPath) continue;
-        const n = (x.locationsText || '').match(/^(\d+) Locations$/i);
-        jobs.push({
-          id: `wd:${src.tenant}:${x.externalPath.split('_').pop()}`,
-          title: clean(x.title),
-          location: n ? `UK + ${n[1] - 1} other location${n[1] - 1 === 1 ? '' : 's'}` : clean(x.locationsText),
-          ukConfirmed: true,
-          url: `https://${host}/${src.site}${x.externalPath}`,
-          ...workdayPosted(x.postedOn),
-        });
+      let total = 0;
+      for (let offset = 0; offset < 1000; offset += 20) {
+        const page = await post({ appliedFacets, limit: 20, offset, searchText: '' });
+        if (offset === 0) {
+          total = page.total ?? 0; // later pages report 0
+          // If the site ignored the filter we'd be about to label every role worldwide as UK.
+          if (total > expected * 1.5 + 20) throw new Error(`UK filter ignored (${total} results, expected about ${expected})`);
+        }
+        const list = page.jobPostings || [];
+        for (const x of list) {
+          if (!x.externalPath) continue;
+          const n = (x.locationsText || '').match(/^(\d+) Locations$/i);
+          jobs.push({
+            id: `wd:${src.tenant}:${x.externalPath.split('_').pop()}`,
+            title: clean(x.title),
+            location: n ? `UK + ${n[1] - 1} other location${n[1] - 1 === 1 ? '' : 's'}` : clean(x.locationsText),
+            ukConfirmed: true,
+            url: `https://${host}/${site}${x.externalPath}`,
+            ...workdayPosted(x.postedOn),
+          });
+        }
+        if (list.length < 20 || offset + 20 >= total) break;
       }
-      if (list.length < 20 || offset + 20 >= total) break;
+    }
+    return jobs;
+  },
+  async amazon(src) {
+    // amazon.jobs's own search, UK roles only: Amazon's student programmes, plus searches for the words
+    // that mark early-career roles in other teams (AWS internships, apprenticeships). Each search
+    // matches well under a hundred roles, so it's one page each.
+    const base = 'https://www.amazon.jobs/en/search.json?normalized_country_code%5B%5D=GBR&result_limit=100&sort=recent';
+    const searches = ['business_category%5B%5D=studentprograms', ...['intern', 'graduate', 'apprentice', 'placement'].map((q) => `base_query=${q}`)];
+    const byId = new Map();
+    for (const search of searches) {
+      for (let offset = 0; offset < 500; offset += 100) {
+        const page = await request(`${base}&${search}&offset=${offset}`);
+        const list = page.jobs || [];
+        for (const x of list) byId.set(String(x.id_icims || x.id), x);
+        if (list.length < 100 || offset + 100 >= (page.hits ?? 0)) break;
+      }
+    }
+    return searched([...byId].map(([id, x]) => {
+      const cities = [...new Set((x.locations || []).map(parseJSON).map((l) => l?.normalizedCityName || l?.city).filter(Boolean))];
+      return {
+        id: `am:${src.board}:${id}`,
+        title: clean(x.title),
+        location: cities.length ? placeList(cities) : clean(x.normalized_location || x.location),
+        ukConfirmed: true,
+        url: `https://www.amazon.jobs${x.job_path}`,
+        // Amazon files internships and graduate roles under Student Programs. The title says which, and
+        // one that doesn't ("Software Development Engineer - 2027") is a graduate role.
+        labels: x.business_category === 'studentprograms' ? ['Graduate'] : [],
+        posted: x.posted_date ? dateOnly(`${x.posted_date} UTC`) : null,
+      };
+    }));
+  },
+  async eightfold(src) {
+    // The search the careers site itself calls (Microsoft's robots.txt allows /api/pcsx), UK roles only.
+    // It allows so few requests that it searches for each early-career word rather than reading every
+    // UK role ten at a time. A search with several words matches only roles that have all of them.
+    const byId = new Map();
+    for (const query of src.queries) {
+      for (let start = 0; start < 100; start += 10) {
+        const page = await request(`https://${src.host}/api/pcsx/search?domain=${src.domain}&query=${encodeURIComponent(query)}&location=United%20Kingdom&start=${start}&sort_by=timestamp`);
+        const list = page.data?.positions || [];
+        for (const x of list) byId.set(String(x.id), x);
+        if (list.length < 10 || start + 10 >= (page.data?.count ?? 0)) break;
+      }
+    }
+    return searched([...byId].map(([id, x]) => ({
+      id: `ef:${src.board}:${id}`,
+      title: clean(x.name),
+      location: clean((x.standardizedLocations?.length ? x.standardizedLocations : x.locations || []).join('; ')),
+      url: `https://${src.host}${x.positionUrl}`,
+      posted: x.postedTs ? dateOnly(x.postedTs * 1000) : null,
+    })));
+  },
+  async sitemap(src, { known }) {
+    // Careers sites that list every role in their sitemap, with the place and the title in the address
+    // (careers.arm.com/job/bristol/graduate-engineer-systems-engineering/33099/102648589728). The address
+    // drops punctuation, so for a UK early-career role it hasn't seen before, it reads the role's page
+    // once for the exact title and posting date.
+    const xml = await request(src.sitemap, { text: true });
+    const jobs = [];
+    for (const [, loc] of xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)) {
+      const url = decodeEntities(loc);
+      const m = url.match(src.match);
+      if (!m) continue;
+      const job = { id: `sm:${src.board}:${m.groups.id}`, title: slugTitle(m.groups.slug), location: slugTitle(m.groups.place), url };
+      if (isUK(job.location) && jobType(job.title)) {
+        const seen = known.get(job.id);
+        if (seen) Object.assign(job, { title: seen.title, posted: seen.posted });
+        else Object.assign(job, await rolePage(url).catch(() => ({})));
+      }
+      jobs.push(job);
     }
     return jobs;
   },
@@ -293,35 +453,43 @@ async function main() {
   for (const src of SOURCES) {
     const key = `${src.ats}:${src.board || src.tenant}`;
     try {
-      const all = await adapters[src.ats](src);
+      const all = await adapters[src.ats](src, { known: prevById });
       let uk = 0;
       let kept = 0;
       for (const j of all) {
         seen.add(j.id);
-        const inUK = src.ukOnly || j.ukConfirmed || /^(gb|gbr|uk|united kingdom|great britain)$/i.test(j.country || '') || isUK(j.location);
+        const inUK = src.ukOnly || j.ukConfirmed || /^(gb|gbr|uk|united kingdom|great britain)$/i.test(j.country || '') || isUK(j.location) || isUK(j.places?.join('; '));
         if (!inUK) continue;
         uk++;
-        const type = jobType(j.title);
+        const type = jobType(j.title, j.labels);
         if (!type) {
-          if (nearMiss && NEAR_MISS_RE.test(j.title)) nearMiss.push(`${src.company} | ${j.title}`);
+          if (nearMiss && (NEAR_MISS_RE.test(j.title) || j.labels?.some((l) => NEAR_MISS_RE.test(l)))) {
+            nearMiss.push(`${src.company} | ${j.title}${j.labels?.length ? ` [${j.labels.join('; ')}]` : ''}`);
+          }
           continue;
         }
         kept++;
         current.set(j.id, { ...j, company: src.company, type, discipline: discipline(j.title, src.field) });
       }
-      sources.push({ company: src.company, ats: src.ats, open: kept, uk, total: all.length, ok: true });
-      console.log(`${src.company.padEnd(30)} ${String(kept).padStart(3)} early-career of ${String(uk).padStart(4)} UK roles (${all.length} on board)`);
+      if (all.searched) {
+        // Only search results, so there's no count of all its UK roles.
+        sources.push({ company: src.company, ats: src.ats, open: kept, uk: null, total: null, ok: true });
+        console.log(`${src.company.padEnd(30)} ${String(kept).padStart(3)} early-career of ${String(all.length).padStart(4)} roles its search found`);
+      } else {
+        sources.push({ company: src.company, ats: src.ats, open: kept, uk, total: all.length, ok: true });
+        console.log(`${src.company.padEnd(30)} ${String(kept).padStart(3)} early-career of ${String(uk).padStart(4)} UK roles (${all.length} on board)`);
+      }
     } catch (err) {
       failed.add(key);
       const before = prev.sources.find((s) => s.company === src.company && s.ats === src.ats);
-      sources.push({ company: src.company, ats: src.ats, open: before?.open ?? 0, uk: before?.uk ?? 0, total: before?.total ?? 0, ok: false, error: err.message });
+      sources.push({ company: src.company, ats: src.ats, open: before?.open ?? 0, uk: before ? before.uk ?? null : 0, total: before ? before.total ?? null : 0, ok: false, error: err.message });
       warn(`${src.company} (${src.ats}): ${err.message}`);
     }
   }
 
   const sourceKeyOf = (job) => {
     const [ats, board] = job.id.split(':');
-    return `${{ gh: 'greenhouse', lv: 'lever', ab: 'ashby', wd: 'workday' }[ats]}:${board}`;
+    return `${{ gh: 'greenhouse', lv: 'lever', ab: 'ashby', wd: 'workday', am: 'amazon', ef: 'eightfold', sm: 'sitemap' }[ats]}:${board}`;
   };
   const activeKeys = new Set(SOURCES.map((src) => `${src.ats}:${src.board || src.tenant}`));
   const cutoff = daysAgo(KEEP_CLOSED_DAYS);

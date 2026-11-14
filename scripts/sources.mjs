@@ -1,12 +1,14 @@
 // Employer job boards the tracker reads.
 //
 // Every entry is either a public job-board API the employer publishes so that its roles can be listed
-// elsewhere (Greenhouse, Lever, Ashby), or the endpoint the employer's own Workday career site calls.
-// To add an employer: find its board name in the links on its careers page, add a line, and run
-// `node scripts/fetch-jobs.mjs`.
+// elsewhere (Greenhouse, Lever, Ashby), the endpoint the employer's own Workday career site calls, or,
+// for a few large employers with their own careers site, the search that site calls or its sitemap
+// (each allowed by the site's robots.txt). To add an employer: find its board name in the links on its
+// careers page, add a line, and run `node scripts/fetch-jobs.mjs`.
 //
 //   gh / lv / ab (company, board)
-//   wd (company, tenant, n, site)   for https://<tenant>.wd<n>.myworkdayjobs.com/<site>
+//   wd (company, tenant, n, site)   for https://<tenant>.wd<n>.myworkdayjobs.com/<site>; site can be a
+//                                   list when the employer runs more than one
 //   { ukOnly: true }                every role on the board is in the UK, so no location filter is needed
 //   field                           the employer's main field, used only when a title says no more than
 //                                   'engineer' (hardware) or 'researcher' (quant, data)
@@ -37,6 +39,10 @@ export const SOURCES = [
   gh('Mako', 'mako', 'quant'),
   gh('Graviton Research Capital', 'gravitonresearchcapital', 'quant'),
   gh('XTX Markets', 'xtxmarketstechnologies', 'quant'),
+  gh('Optiver', 'optiverus', 'quant'),
+  gh('Five Rings', 'fiveringsllc', 'quant'),
+  wd('G-Research', 'gresearch', 103, ['G-Research', 'GRPlacements'], { field: 'quant' }),
+  lv('Wintermute', 'wintermute-trading', 'quant'),
   ab('Keyrock', 'keyrock', 'quant'),
 
   // AI and deep tech
@@ -68,6 +74,8 @@ export const SOURCES = [
   lv('Palantir', 'palantir'),
   lv('Spotify', 'spotify'),
   gh('Stripe', 'stripe'),
+  gh('Cloudflare', 'cloudflare'),
+  gh('Canonical', 'canonical'),
   gh('Databricks', 'databricks'),
   gh('Datadog', 'datadog'),
   gh('MongoDB', 'mongodb'),
@@ -88,6 +96,7 @@ export const SOURCES = [
   gh('Airbnb', 'airbnb'),
   gh('Duolingo', 'duolingo'),
   gh('Epic Games', 'epicgames'),
+  gh('Sony Interactive Entertainment', 'sonyinteractiveentertainmentglobal'),
   gh('Rockstar Games', 'rockstargames'),
   ab('Improbable', 'improbable'),
   gh('Thoughtworks', 'thoughtworks'),
@@ -122,6 +131,18 @@ export const SOURCES = [
   ab('Trainline', 'trainline'),
   ab('Motorway', 'motorway'),
   ab('Multiverse', 'multiverse'),
+
+  // Large employers with their own careers site: the search the site calls, or its sitemap
+  { company: 'Amazon', ats: 'amazon', board: 'amazon' },
+  {
+    company: 'Microsoft', ats: 'eightfold', board: 'microsoft', host: 'apply.careers.microsoft.com', domain: 'microsoft.com',
+    queries: ['intern', 'graduate', 'apprentice', 'placement'],
+  },
+  {
+    company: 'Arm', ats: 'sitemap', board: 'arm', field: 'hardware',
+    sitemap: 'https://careers.arm.com/sitemap.xml',
+    match: /^https:\/\/careers\.arm\.com\/job\/(?<place>[^/]+)\/(?<slug>[^/]+)\/\d+\/(?<id>\d+)$/,
+  },
 
   // Large employers on Workday
   wd('NVIDIA', 'nvidia', 5, 'NVIDIAExternalCareerSite'),
