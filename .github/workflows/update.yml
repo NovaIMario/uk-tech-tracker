@@ -2,8 +2,8 @@ name: Update roles and deploy
 
 on:
   schedule:
-    - cron: '17 6 * * *'
-    - cron: '17 18 * * *'
+    # Every two hours from 06:17 to 22:17 UTC.
+    - cron: '17 6-22/2 * * *'
   push:
     branches: [main]
   workflow_dispatch:
@@ -18,12 +18,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  update-and-deploy:
+  update:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      # Scheduled runs redeploy only when the roles changed; pushes and manual runs always do.
+      deploy: ${{ steps.commit.outputs.changed == 'true' || github.event_name != 'schedule' }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -32,6 +32,7 @@ jobs:
       - name: Read employer job boards
         run: node scripts/fetch-jobs.mjs
       - name: Commit changed data
+        id: commit
         run: |
           if [ -n "$(git status --porcelain data)" ]; then
             git config user.name "github-actions[bot]"
@@ -39,12 +40,24 @@ jobs:
             git add data
             git commit -m "Update roles $(date -u +%Y-%m-%d)"
             git push || echo "::warning::Could not push the data commit; the next run will retry."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "No changes."
           fi
       - uses: actions/configure-pages@v6
+        if: steps.commit.outputs.changed == 'true' || github.event_name != 'schedule'
       - uses: actions/upload-pages-artifact@v5
+        if: steps.commit.outputs.changed == 'true' || github.event_name != 'schedule'
         with:
           path: .
+
+  deploy:
+    needs: update
+    if: needs.update.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v5

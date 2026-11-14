@@ -1,6 +1,6 @@
 # Early Careers Tracker
 
-UK tech internships, placements, spring weeks, graduate roles and apprenticeships in one list, read twice a day from the employers' own job boards.
+UK tech internships, placements, spring weeks, graduate roles and apprenticeships in one list, read every two hours from the employers' own job boards.
 
 **Live site:** https://novaimario.github.io/uk-tech-tracker/
 
@@ -14,12 +14,12 @@ UK tech internships, placements, spring weeks, graduate roles and apprenticeship
 
 ## How it works
 
-`scripts/fetch-jobs.mjs` runs on GitHub Actions at 06:17 and 18:17 UTC:
+`scripts/fetch-jobs.mjs` runs on GitHub Actions every two hours from 06:17 to 22:17 UTC:
 
 1. It reads each board in `scripts/sources.mjs` through the public job-board API the employer publishes (Greenhouse, Lever and Ashby), or the endpoint the employer's own Workday career site calls, filtered to UK locations.
 2. It keeps roles whose location is in the UK and whose title marks them as an internship, placement, spring week or insight programme, graduate or entry-level role, or apprenticeship. Senior roles, recruiter roles and roles only open to returning interns are dropped.
 3. It merges the result into `data/jobs.json`. Each role keeps the date it was first posted. Roles that come down are marked closed and removed three weeks later. If a board can't be read, its roles are left as they were.
-4. The workflow commits the data if it changed and deploys the site to GitHub Pages.
+4. If the data changed, the workflow commits it and redeploys the site to GitHub Pages.
 
 It's polite about it: one request at a time, at least 0.4 seconds apart per host (1.1 seconds for Lever, as its robots.txt asks), with a descriptive user agent.
 
@@ -62,7 +62,7 @@ The page is plain HTML, CSS and JavaScript modules with no build step and no dep
 | `scripts/fetch-jobs.mjs` | The fetcher and the title and location classifiers |
 | `scripts/sources.mjs` | The employer boards that are read |
 | `data/jobs.json` | The roles, written by the fetcher |
-| `.github/workflows/update.yml` | The twice-daily update and deploy |
+| `.github/workflows/update.yml` | The update and deploy, every two hours |
 
 ## Disclaimer
 
