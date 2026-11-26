@@ -29,18 +29,24 @@ const today = daysAgo(0);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const warn = (msg) => console.warn(IN_CI ? `::warning::${msg}` : `warning: ${msg}`);
 
-// Per-host pacing. Lever's robots.txt asks for one request a second; Microsoft's search turns away
-// all but a couple of requests a minute.
+// Pacing. Lever's robots.txt asks for one request a second; Microsoft's search turns away all but a
+// couple of requests a minute. Every employer's Workday site is served by the same Workday
+// infrastructure, so those share one pace rather than one per subdomain.
 const lastHit = new Map();
-const GAP = { 'api.lever.co': 1100, 'www.amazon.jobs': 1000, 'apply.careers.microsoft.com': 45_000 };
+const GAP = { 'api.lever.co': 1100, 'www.amazon.jobs': 1000, 'apply.careers.microsoft.com': 45_000, 'myworkdayjobs.com': 1500 };
+const paceKey = (host) => (host.endsWith('.myworkdayjobs.com') ? 'myworkdayjobs.com' : host);
+
+// "Too many requests" is the server asking us to stop, so a board that answers 429 is not retried
+// in the same run: it keeps its roles from the last good read and is tried again next run.
+export class RateLimited extends Error {}
+
 /** JSON by default; { text: true } for an HTML page or a sitemap. */
 async function request(url, { text = false, ...init } = {}) {
-  const host = new URL(url).host;
+  const key = paceKey(new URL(url).host);
   for (let attempt = 1; ; attempt++) {
-    const wait = (lastHit.get(host) ?? 0) + (GAP[host] ?? 400) - Date.now();
+    const wait = (lastHit.get(key) ?? 0) + (GAP[key] ?? 400) - Date.now();
     if (wait > 0) await sleep(wait);
-    lastHit.set(host, Date.now());
-    let pause = 2000 * attempt;
+    lastHit.set(key, Date.now());
     try {
       const res = await fetch(url, {
         ...init,
@@ -48,14 +54,32 @@ async function request(url, { text = false, ...init } = {}) {
         signal: AbortSignal.timeout(30_000),
       });
       if (res.ok) return await (text ? res.text() : res.json());
-      // Too many requests: wait as long as the server asks (at most a minute), then try again.
-      if (res.status === 429 && attempt < 3) pause = Math.min(60, Number(res.headers.get('retry-after')) || 15 * attempt) * 1000;
-      else if (res.status < 500 || attempt >= 3) throw new Error(`HTTP ${res.status}`);
+      if (res.status === 429) throw new RateLimited('HTTP 429');
+      if (res.status < 500 || attempt >= 3) throw new Error(`HTTP ${res.status}`);
     } catch (err) {
-      if (attempt >= 3 || /HTTP 4/.test(err.message)) throw err;
+      // 4xx answers are final; a timeout or network error is tried once more.
+      if (err instanceof RateLimited || attempt >= 2 || /HTTP 4/.test(err.message)) throw err;
     }
-    await sleep(pause);
+    await sleep(2000 * attempt);
   }
+}
+
+// When a whole service turns us away (rate limits or timeouts on two boards in a row), the rest of
+// its boards are skipped for this run, and the run stops starting new boards after RUN_BUDGET_MS so
+// that it always finishes and saves well inside the workflow's time limit.
+const RUN_BUDGET_MS = 13 * 60_000;
+const BREAK_AFTER = 2;
+export function circuitBreaker(breakAfter = BREAK_AFTER) {
+  const streak = new Map();
+  return {
+    open: (ats) => (streak.get(ats) ?? 0) >= breakAfter,
+    success: (ats) => streak.set(ats, 0),
+    failure: (ats, err) => {
+      if (err instanceof RateLimited || err?.name === 'TimeoutError' || /timeout|aborted/i.test(err?.message ?? '')) {
+        streak.set(ats, (streak.get(ats) ?? 0) + 1);
+      }
+    },
+  };
 }
 
 // ---------------------------------------------------------------- where: is a location in the UK?
@@ -450,10 +474,19 @@ async function main() {
   const failed = new Set();
   const sources = [];
   const nearMiss = process.env.NEAR_MISS ? [] : null; // NEAR_MISS=1 lists UK titles that were left out
+  const only = process.env.ONLY ? new RegExp(process.env.ONLY, 'i') : null; // ONLY=regex reads just those employers (for testing)
+  const breaker = circuitBreaker();
+  const started = Date.now();
+  const nowIso = new Date().toISOString();
   for (const src of SOURCES) {
     const key = `${src.ats}:${src.board || src.tenant}`;
+    const before = prev.sources.find((s) => s.company === src.company && s.ats === src.ats);
     try {
+      if (only && !only.test(src.company)) throw new Error('skipped (ONLY)');
+      if (breaker.open(src.ats)) throw new Error(`skipped: ${src.ats} is turning requests away`);
+      if (Date.now() - started > RUN_BUDGET_MS) throw new Error('skipped: out of time this run');
       const all = await adapters[src.ats](src, { known: prevById });
+      breaker.success(src.ats);
       let uk = 0;
       let kept = 0;
       for (const j of all) {
@@ -473,19 +506,22 @@ async function main() {
       }
       if (all.searched) {
         // Only search results, so there's no count of all its UK roles.
-        sources.push({ company: src.company, ats: src.ats, open: kept, uk: null, total: null, ok: true });
+        sources.push({ company: src.company, ats: src.ats, open: kept, uk: null, total: null, ok: true, read: nowIso });
         console.log(`${src.company.padEnd(30)} ${String(kept).padStart(3)} early-career of ${String(all.length).padStart(4)} roles its search found`);
       } else {
-        sources.push({ company: src.company, ats: src.ats, open: kept, uk, total: all.length, ok: true });
+        sources.push({ company: src.company, ats: src.ats, open: kept, uk, total: all.length, ok: true, read: nowIso });
         console.log(`${src.company.padEnd(30)} ${String(kept).padStart(3)} early-career of ${String(uk).padStart(4)} UK roles (${all.length} on board)`);
       }
     } catch (err) {
       failed.add(key);
-      const before = prev.sources.find((s) => s.company === src.company && s.ats === src.ats);
-      sources.push({ company: src.company, ats: src.ats, open: before?.open ?? 0, uk: before ? before.uk ?? null : 0, total: before ? before.total ?? null : 0, ok: false, error: err.message });
-      warn(`${src.company} (${src.ats}): ${err.message}`);
+      breaker.failure(src.ats, err);
+      // Boards read before this field existed count as read at the previous update.
+      const read = before?.read ?? (before && before.ok !== false ? prev.updated : undefined);
+      sources.push({ company: src.company, ats: src.ats, open: before?.open ?? 0, uk: before ? before.uk ?? null : 0, total: before ? before.total ?? null : 0, ok: false, error: err.message, ...(read ? { read } : {}) });
+      if (err.message !== 'skipped (ONLY)') warn(`${src.company} (${src.ats}): ${err.message}`);
     }
   }
+  console.log(`read the boards in ${Math.round((Date.now() - started) / 1000)}s`);
 
   const sourceKeyOf = (job) => {
     const [ats, board] = job.id.split(':');

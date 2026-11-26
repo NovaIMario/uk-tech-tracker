@@ -346,7 +346,7 @@ function renderSources() {
   const board = { greenhouse: 'Greenhouse', lever: 'Lever', ashby: 'Ashby', workday: 'Workday', amazon: 'Careers site', eightfold: 'Careers site', sitemap: 'Careers site' };
   const failing = rows.filter((s) => !s.ok);
   const open = rows.reduce((n, s) => n + s.open, 0);
-  $('#sources-summary').textContent = censor(`${plural(rows.length, 'employer job board')}, with ${plural(open, 'early-career UK role')} between them. Last changed ${timeAgo(state.data.updated)}.${failing.length ? ` ${plural(failing.length, 'board')} couldn't be read on the last run, so their roles were kept as they were.` : ''}`);
+  $('#sources-summary').textContent = censor(`${plural(rows.length, 'employer job board')}, with ${plural(open, 'early-career UK role')} between them. Last changed ${timeAgo(state.data.updated)}.${failing.length ? ` ${plural(failing.length, 'board')} couldn't be read on the last run (usually because the site was limiting requests), so their roles were kept from the last good read.` : ''}`);
   $('#sources-table').replaceChildren(h('table', { class: 'data' },
     h('thead', null, h('tr', null,
       h('th', { scope: 'col' }, 'Employer'),
@@ -354,7 +354,7 @@ function renderSources() {
       h('th', { scope: 'col', class: 'num' }, 'Early-career UK roles'),
       h('th', { scope: 'col', class: 'num' }, 'All UK roles'))),
     h('tbody', null, rows.map((s) => h('tr', null,
-      h('td', null, s.company, s.ok ? null : h('span', { class: 'warn' }, ' · not read last time')),
+      h('td', null, s.company, s.ok ? null : h('span', { class: 'warn', title: s.error || '' }, s.read ? ` · not read since ${fmtDate(s.read.slice(0, 10))}` : ' · not read last time')),
       h('td', null, board[s.ats] || s.ats),
       h('td', { class: 'num' }, fmtInt(s.open)),
       // Employers read through a search for early-career roles have no count of all their UK roles.

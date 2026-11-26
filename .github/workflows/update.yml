@@ -20,7 +20,7 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25 # the script stops starting new boards after 13 minutes
     outputs:
       # Scheduled runs redeploy only when the roles changed; pushes and manual runs always do.
       deploy: ${{ steps.commit.outputs.changed == 'true' || github.event_name != 'schedule' }}
